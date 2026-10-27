@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -56,7 +57,7 @@ func (a *App) routes() http.Handler {
 
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
 		st := map[string]any{
-			"appVersion": appVersion, "dataDir": a.dir, "simcPath": a.simcPath(),
+			"appVersion": appVersion, "appBuild": currentBuild(), "dataDir": a.dir, "simcPath": a.simcPath(),
 			"settings": a.getSettings(), "threads": a.threads(), "fightStyles": fightStyles,
 		}
 		if in, ok := a.managedInstall(); ok {
@@ -134,6 +135,28 @@ func (a *App) routes() http.Handler {
 			return "", a.installFromArchive(j.ctx, j, tmp, name, "uploaded file")
 		})
 		writeJSON(w, map[string]string{"job": j.ID})
+	})
+
+	mux.HandleFunc("GET /api/update", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.updater.get())
+	})
+	mux.HandleFunc("POST /api/update/check", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
+		defer cancel()
+		_ = a.updater.check(ctx)
+		writeJSON(w, a.updater.get())
+	})
+	mux.HandleFunc("POST /api/update/apply", func(w http.ResponseWriter, r *http.Request) {
+		if j := a.jobs.running("sim"); j != nil {
+			writeErr(w, 400, errors.New("a simulation is running; wait for it to finish first"))
+			return
+		}
+		if err := a.updater.apply(); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+		go func() { time.Sleep(300 * time.Millisecond); a.requestQuit() }()
 	})
 
 	mux.HandleFunc("GET /api/classes", func(w http.ResponseWriter, r *http.Request) {

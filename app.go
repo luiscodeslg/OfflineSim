@@ -6,16 +6,18 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 )
 
 // Settings are persisted to settings.json in the data directory.
 type Settings struct {
-	SimcPath    string  `json:"simcPath"`    // path to simc(.exe); empty = managed install
-	Threads     int     `json:"threads"`     // 0 = all cores
-	LowPriority bool    `json:"lowPriority"` // run simc below normal priority
-	NightlyURL  string  `json:"nightlyUrl"`  // listing to look for nightly builds
-	Iterations  int     `json:"iterations"`  // default iterations for new sims (0 = target error)
-	TargetError float64 `json:"targetError"`
+	SimcPath     string  `json:"simcPath"`    // path to simc(.exe); empty = managed install
+	Threads      int     `json:"threads"`     // 0 = all cores
+	LowPriority  bool    `json:"lowPriority"` // run simc below normal priority
+	NightlyURL   string  `json:"nightlyUrl"`  // listing to look for nightly builds
+	Iterations   int     `json:"iterations"`  // default iterations for new sims (0 = target error)
+	TargetError  float64 `json:"targetError"`
+	NoAutoUpdate bool    `json:"noAutoUpdate"` // true = never check for new OfflineSim versions
 }
 
 type App struct {
@@ -23,6 +25,7 @@ type App struct {
 	mu       sync.Mutex
 	settings Settings
 	jobs     *jobManager
+	updater  *selfUpdater
 	install  *job // current simc install/update job, if any
 	quit     chan struct{}
 	quitOnce sync.Once
@@ -43,6 +46,7 @@ func newApp(dir string) (*App, error) {
 		}
 	}
 	a.jobs = newJobManager()
+	a.updater = newSelfUpdater(a.path("updates"))
 	return a, nil
 }
 
@@ -76,7 +80,15 @@ func (a *App) shutdown() {
 }
 
 func (a *App) requestQuit() {
-	a.quitOnce.Do(func() { close(a.quit) })
+	a.quitOnce.Do(func() {
+		close(a.quit)
+		// In app-window mode the WebView message loop owns the main thread
+		// and never sees the channel, so make sure the process really ends.
+		go func() {
+			time.Sleep(time.Second)
+			os.Exit(0)
+		}()
+	})
 }
 
 func writeFileAtomic(path string, data []byte) error {

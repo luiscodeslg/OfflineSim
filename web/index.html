@@ -23,7 +23,7 @@
     <div class="nav-group">Library</div>
     <a href="#library" data-page="library">APL Library</a>
     <a href="#results" data-page="results">Results</a>
-    <a href="#settings" data-page="settings">Settings</a>
+    <a href="#settings" data-page="settings" id="navSettings">Settings</a>
     <div class="sidebar-foot" id="engineBadge">Checking engine…</div>
   </nav>
 
@@ -180,6 +180,12 @@
         <div id="installLog" class="hidden"><div class="progress"><div id="installBar"></div></div><pre class="log" id="installLogText"></pre></div>
       </div>
       <div class="card">
+        <div class="card-head"><h2>OfflineSim updates</h2></div>
+        <div id="appUpdate" class="kv"></div>
+        <div class="row gap wrap"><button class="btn ghost" id="checkAppUpdate">Check for updates</button><button class="btn primary hidden" id="applyAppUpdate">Restart and update</button></div>
+        <p class="muted small">New versions are published on GitHub. Each one is signed; the app only installs an update whose signature matches the key built into it, and your data is never touched.</p>
+      </div>
+      <div class="card">
         <div class="card-head"><h2>Preferences</h2></div>
         <div class="grid">
           <label>Use my own simc.exe (optional)
@@ -191,6 +197,7 @@
           <label>Nightly listing URL
             <input id="setNightly" class="input">
           </label>
+          <label class="check"><input type="checkbox" id="setAutoUpdate"> Check for OfflineSim updates automatically</label>
           <label class="check"><input type="checkbox" id="setLowPri"> Run sims at low CPU priority so the PC stays responsive</label>
         </div>
         <div class="row gap"><button class="btn primary" id="saveSettings">Save</button><button class="btn ghost" id="openData">Open data folder</button><button class="btn ghost" id="quitBtn">Quit OfflineSim</button></div>

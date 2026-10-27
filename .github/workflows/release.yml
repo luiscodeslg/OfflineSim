@@ -1,0 +1,58 @@
+name: Release
+
+# Every push to main builds a signed Windows exe and publishes it as the
+# "latest" GitHub release. Installed copies of OfflineSim check that release
+# for update/manifest.json + manifest.sig and only install an update whose
+# signature matches the public key built into the app.
+#
+# Needs the repository secret SIGNING_PRIVATE_KEY (the contents of the private
+# key file made with `go run ./tools/keygen`). Without it the job stops after
+# the tests and publishes nothing.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["*.md", "testdata/**", ".github/workflows/ci.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # The runner image ships Go; go.mod's toolchain line pulls the exact version if it is newer.
+      - run: go vet ./... && go test ./...
+      - name: Build, sign and publish
+        env:
+          OFFLINESIM_SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          RUN_NUMBER: ${{ github.run_number }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          if [ -z "$OFFLINESIM_SIGNING_KEY" ]; then
+            echo "::notice::SIGNING_PRIVATE_KEY is not set - skipping the release. See README > Publishing updates."
+            exit 0
+          fi
+          # Build number = Actions run number, so it only ever goes up.
+          VERSION="1.0.${RUN_NUMBER}"
+          mkdir -p dist
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
+            -ldflags "-s -w -H windowsgui -X main.appVersion=${VERSION} -X main.appBuild=${RUN_NUMBER}" \
+            -o dist/OfflineSim.exe .
+          NOTES="$(git log -1 --pretty=%s)"
+          go run ./tools/sign -exe dist/OfflineSim.exe -build "$RUN_NUMBER" -version "$VERSION" -notes "$NOTES" -out dist
+          TAG="build-${RUN_NUMBER}"
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$COMMIT" --latest \
+            --title "OfflineSim ${VERSION}" --notes "$NOTES" \
+            dist/OfflineSim.exe dist/manifest.json dist/manifest.sig
+          # Keep the last 10 releases.
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '.[10:][].tagName' |
+            while read -r t; do gh release delete "$t" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes; done

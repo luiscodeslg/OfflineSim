@@ -25,3 +25,5 @@ func openPath(path string) { openBrowser(path) }
 func openWindow(url, dataPath string) bool { return false }
 
 func showError(msg string) { fmt.Fprintln(os.Stderr, msg) }
+
+func waitForExit(pid int) {}

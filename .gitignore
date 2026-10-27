@@ -1,3 +1,5 @@
 dist/
 *.exe
 shots/
+*.pem
+!update/public-key.pem

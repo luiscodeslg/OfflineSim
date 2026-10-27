@@ -33,7 +33,12 @@ func main() {
 	port := flag.Int("port", 0, "port for the local UI server (0 = random)")
 	browser := flag.Bool("browser", false, "open the UI in the default browser instead of an app window")
 	headless := flag.Bool("headless", false, "only run the server and print its URL")
+	waitPID := flag.Int("wait-pid", 0, "internal: wait for this process to exit first (used after an update)")
 	flag.Parse()
+	if *waitPID > 0 {
+		waitForExit(*waitPID)
+	}
+	go cleanupOldExe()
 
 	dir := *dataDir
 	if dir == "" {
@@ -66,6 +71,7 @@ func main() {
 	}
 	url := "http://" + ln.Addr().String() + "/"
 	log.Printf("OfflineSim %s serving %s (data: %s)", appVersion, url, dir)
+	go app.updater.loop(func() bool { return !app.getSettings().NoAutoUpdate && currentBuild() > 0 })
 	go func() {
 		if err := http.Serve(ln, app.routes()); err != nil {
 			log.Printf("server stopped: %v", err)

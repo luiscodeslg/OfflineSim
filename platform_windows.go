@@ -104,3 +104,14 @@ func showError(msg string) {
 	m, _ := syscall.UTF16PtrFromString(msg)
 	box.Call(0, uintptr(unsafe.Pointer(m)), uintptr(unsafe.Pointer(t)), 0x10)
 }
+
+func waitForExit(pid int) {
+	const synchronize = 0x00100000
+	k32 := syscall.NewLazyDLL("kernel32.dll")
+	h, _, _ := k32.NewProc("OpenProcess").Call(synchronize, 0, uintptr(pid))
+	if h == 0 {
+		return
+	}
+	k32.NewProc("WaitForSingleObject").Call(h, 15000)
+	k32.NewProc("CloseHandle").Call(h)
+}
