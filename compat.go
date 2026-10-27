@@ -17,7 +17,7 @@ var levelCaps = map[int]struct {
 
 var (
 	engineWoWRe  = regexp.MustCompile(`World of Warcraft (\d+)\.(\d+)(?:\.(\d+))?`)
-	engineSimcRe = regexp.MustCompile(`SimulationCraft (\d+)-(\d+)`)
+	engineSimcRe = regexp.MustCompile(`SimulationCraft (\d+)[-.](\d+)`)
 	profileWoWRe = regexp.MustCompile(`(?m)^#\s*WoW (\d+)\.(\d+)(?:\.(\d+))?`)
 )
 

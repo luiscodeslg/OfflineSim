@@ -708,7 +708,7 @@ function renderSettings() {
   const s = state.status;
   if (!s) return;
   const kv = [
-    ["Engine", s.simcVersion ? esc(s.simcVersion) : `<span class="delta-neg">Not installed</span>`],
+    ["Engine", s.simcVersion ? esc(s.simcVersion) : s.simcError ? `<span class="delta-neg">Found but not usable: ${esc(s.simcError)}</span>` : `<span class="delta-neg">Not installed</span>`],
     ["Game version", s.engine && s.engine.wow ? `WoW ${esc(s.engine.wow)}${s.engine.expansion ? " · " + esc(s.engine.expansion) : ""}${s.engine.levelCap ? " · level cap " + s.engine.levelCap : ""}` : "–"],
     ["simc executable", s.simcPath ? esc(s.simcPath) : "–"],
     ["Installed build", s.install ? `${esc(s.install.name)} <span class="muted">(${esc(new Date(s.install.installedAt).toLocaleString())})</span>` : "–"],
