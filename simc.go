@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -86,8 +87,54 @@ var (
 	versionCache = map[string]string{}
 )
 
-// simcVersion runs simc without arguments and returns its banner line,
-// e.g. "SimulationCraft 1200-01 for World of Warcraft 12.0.0.12345 Live".
+var (
+	bannerRe     = regexp.MustCompile(`(?i)SimulationCraft\s+\d[^\r\n]*`)
+	nameVersion  = regexp.MustCompile(`simc-(\d+)[-.](\d+)`)
+	versionProbe = [][]string{nil, {"help"}}
+)
+
+// probeBanner runs simc with each probe argument list and returns the first
+// banner line ("SimulationCraft 1210-01 for World of Warcraft ..."), plus the
+// raw output of the last attempt for diagnostics.
+func probeBanner(exe string) (banner, diag string) {
+	for _, args := range versionProbe {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		cmd := exec.CommandContext(ctx, exe, args...)
+		cmd.Dir = filepath.Dir(exe)
+		hideWindow(cmd)
+		out, err := cmd.CombinedOutput()
+		cancel()
+		text := strings.ToValidUTF8(string(out), "")
+		if m := bannerRe.FindString(text); m != "" {
+			return strings.TrimSpace(m), ""
+		}
+		diag = strings.TrimSpace(text)
+		if len(diag) > 400 {
+			diag = diag[:400] + "…"
+		}
+		if err != nil {
+			diag = fmt.Sprintf("(%v) %s", err, diag)
+		}
+	}
+	return "", diag
+}
+
+// versionFromName derives "SimulationCraft 1210-01" from names like
+// simc-1210.01.73a372b-win64 or simc-1205-01-win64-abc1234, for builds whose
+// banner we can't read.
+func versionFromName(names ...string) string {
+	for _, n := range names {
+		if m := nameVersion.FindStringSubmatch(n); m != nil {
+			return fmt.Sprintf("SimulationCraft %s-%s (version taken from the file name)", m[1], m[2])
+		}
+	}
+	return ""
+}
+
+// simcVersion returns the engine's banner line, e.g.
+// "SimulationCraft 1200-01 for World of Warcraft 12.0.0.12345 Live".
+// If the banner can't be read it falls back to the version in the install's
+// file name, so a working engine is never reported as missing.
 func (a *App) simcVersion() (string, error) {
 	p := a.simcPath()
 	if p == "" {
@@ -105,22 +152,17 @@ func (a *App) simcVersion() (string, error) {
 	}
 	versionMu.Unlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, p)
-	cmd.Dir = filepath.Dir(p)
-	hideWindow(cmd)
-	out, _ := cmd.CombinedOutput()
-	v := ""
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "SimulationCraft") {
-			v = line
-			break
-		}
-	}
+	v, diag := probeBanner(p)
 	if v == "" {
-		return "", fmt.Errorf("could not read simc version from %s", p)
+		name := ""
+		if in, ok := a.managedInstall(); ok && in.Exe == p {
+			name = in.Name
+		}
+		v = versionFromName(name, filepath.Base(filepath.Dir(p)), filepath.Base(filepath.Dir(filepath.Dir(p))))
+		log.Printf("simc banner not found for %s: %s", p, diag)
+		if v == "" {
+			return "", fmt.Errorf("could not read the version from %s. simc printed: %s", p, diag)
+		}
 	}
 	versionMu.Lock()
 	versionCache[key] = v
@@ -143,7 +185,9 @@ func (a *App) simcVersionKey() string {
 }
 
 var (
-	nightlyRe   = regexp.MustCompile(`href="([^"]*?(simc-([0-9]+)-([0-9]+)-win64-[0-9a-f]+\.7z))"`)
+	// Handles both naming schemes seen in the listing:
+	//   simc-1205-01-win64-abc1234.7z   and   simc-1210.01.73a372b-win64.7z
+	nightlyRe   = regexp.MustCompile(`href="([^"]*?(simc-([0-9]+)[-.]([0-9]+)(?:[-.][0-9a-f]+)?-win64(?:-[0-9a-f]+)?\.7z))"`)
 	listingDate = regexp.MustCompile(`(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})|(\d{2})-([A-Za-z]{3})-(\d{4}) (\d{2}:\d{2})`)
 )
 
@@ -155,29 +199,32 @@ type nightlyBuild struct {
 	pos        int
 }
 
-// latestNightly finds the newest Windows x64 build in the listing. It ranks
-// builds by SimC version first (so an old build with a fresh timestamp can
-// never win), then by the date shown in the listing.
-func latestNightly(ctx context.Context, listing string) (name, url string, err error) {
+// minWoWMajor is the oldest game version this app is meant to sim (Midnight).
+// A listing whose newest build is older than this is treated as stale, never
+// as "up to date".
+const minWoWMajor = 12
+
+// findNightlies fetches the listing and returns the Windows x64 builds, best
+// first, plus the base URL they're relative to.
+func findNightlies(ctx context.Context, listing string) ([]nightlyBuild, string, error) {
 	req, _ := http.NewRequestWithContext(ctx, "GET", listing, nil)
 	req.Header.Set("User-Agent", appName+"/"+appVersion)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return "", "", fmt.Errorf("%s returned %s", listing, resp.Status)
+		return nil, "", fmt.Errorf("%s returned %s", listing, resp.Status)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
-		return "", "", err
+		return nil, "", err
 	}
 	builds := parseNightlyListing(string(body))
 	if len(builds) == 0 {
-		return "", "", errors.New("no Windows x64 build found in the nightly listing")
+		return nil, "", errors.New("no Windows x64 build found in the nightly listing")
 	}
-	best := builds[0]
 	base := listing
 	if i := strings.IndexAny(base, "?#"); i >= 0 {
 		base = base[:i]
@@ -185,11 +232,25 @@ func latestNightly(ctx context.Context, listing string) (name, url string, err e
 	if !strings.HasSuffix(base, "/") {
 		base = base[:strings.LastIndex(base, "/")+1]
 	}
-	href := best.href
-	if !strings.HasPrefix(href, "http") {
-		href = base + strings.TrimPrefix(href, "./")
+	return builds, base, nil
+}
+
+func (b nightlyBuild) url(base string) string {
+	if strings.HasPrefix(b.href, "http") {
+		return b.href
 	}
-	return best.name, href, nil
+	return base + strings.TrimPrefix(b.href, "./")
+}
+
+// latestNightly finds the newest Windows x64 build in the listing. It ranks
+// builds by SimC version first (so an old build with a fresh timestamp can
+// never win), then by the date shown in the listing.
+func latestNightly(ctx context.Context, listing string) (name, url string, err error) {
+	builds, base, err := findNightlies(ctx, listing)
+	if err != nil {
+		return "", "", err
+	}
+	return builds[0].name, builds[0].url(base), nil
 }
 
 // parseNightlyListing returns the builds in a directory listing, best first.
@@ -436,26 +497,46 @@ func (a *App) installLatest(ctx context.Context, j *job) error {
 	listing := a.getSettings().NightlyURL
 	j.setProgress(-1, "Checking for the latest build")
 	j.log("Looking for the newest Windows build at " + listing)
-	name, url, err := latestNightly(ctx, listing)
+	builds, base, err := findNightlies(ctx, listing)
 	if err != nil && strings.HasPrefix(listing, "https://") {
-		j.log("HTTPS failed (" + err.Error() + "), trying HTTP")
-		name, url, err = latestNightly(ctx, "http://"+strings.TrimPrefix(listing, "https://"))
+		// downloads.simulationcraft.org has served a certificate for another
+		// host. Fall back to HTTP, but say so: the download can't be verified.
+		j.log("HTTPS failed (" + err.Error() + "), trying plain HTTP")
+		builds, base, err = findNightlies(ctx, "http://"+strings.TrimPrefix(listing, "https://"))
+		if err == nil {
+			j.log("Note: this download is not encrypted or signed by the SimC project. It is checked for a valid archive and a working simc.exe, but if that worries you, download the .7z yourself and use \"Install from a downloaded .7z or .zip\".")
+		}
 	}
 	if err != nil {
 		return err
 	}
-	j.log("Newest build in the listing: " + name)
-	if in, ok := a.managedInstall(); ok && in.Name == name && a.getSettings().SimcPath == "" {
-		j.log("Already up to date: " + name)
-		return nil
+	j.log(fmt.Sprintf("Found %d Windows builds; newest first:", len(builds)))
+	for i, b := range builds {
+		if i == 3 {
+			break
+		}
+		j.log("  " + b.name)
 	}
-	j.log("Downloading " + url)
-	tmp := a.path("tmp", name)
+	best := builds[0]
+	if major := best.version / 100; major < minWoWMajor {
+		return fmt.Errorf("the newest build in the listing (%s) is for WoW %d.x, which is too old for current characters. "+
+			"The listing may have changed format or be out of date. Download the newest simc-*-win64 .7z from simulationcraft.org and use \"Install from a downloaded .7z or .zip\"", best.name, major)
+	}
+	if in, ok := a.managedInstall(); ok && in.Name == best.name && a.getSettings().SimcPath == "" {
+		if _, err := a.simcVersion(); err == nil {
+			j.log("Already up to date: " + best.name)
+			return nil
+		}
+		j.log("The installed copy of " + best.name + " isn't usable; reinstalling")
+	}
+	u := best.url(base)
+	j.log("Downloading " + u)
+	tmp := a.path("tmp", best.name)
 	defer os.Remove(tmp)
-	if err := download(ctx, j, url, tmp); err != nil {
+	if err := download(ctx, j, u, tmp); err != nil {
 		return err
 	}
-	return a.installFromArchive(ctx, j, tmp, name, url)
+	return a.installFromArchive(ctx, j, tmp, best.name, u)
 }
 
 func sanitizeName(s string) string {
