@@ -78,8 +78,41 @@ async function refreshStatus() {
     }
   }
   renderSettings();
+  refreshAppUpdate();
   return s;
 }
+
+/* ---------- OfflineSim self-update ---------- */
+
+let appUpdate = null;
+async function refreshAppUpdate() {
+  try { appUpdate = await api("/api/update"); } catch { return; }
+  renderAppUpdate();
+}
+
+function renderAppUpdate() {
+  const u = appUpdate, s = state.status;
+  if (!u || !s) return;
+  const ready = u.state === "ready";
+  const label = {
+    idle: "Not checked yet", checking: "Checking…", current: "You have the latest version",
+    downloading: "Downloading the update…", ready: `Version ${esc(u.version || u.latest)} is ready to install`,
+    error: `<span class="delta-neg">Couldn't check: ${esc(u.error)}</span>`,
+  }[u.state] || esc(u.state);
+  const el = $("#appUpdate");
+  if (el) {
+    el.innerHTML = [
+      ["Installed", `v${esc(s.appVersion)}${s.appBuild ? ` (build ${s.appBuild})` : " (development build)"}`],
+      ["Status", s.appBuild ? label : "Development builds don't self-update"],
+      ["Last checked", u.lastCheck && !u.lastCheck.startsWith("0001") ? esc(new Date(u.lastCheck).toLocaleString()) : "–"],
+    ].map(([k, v]) => `<div class="row" style="gap:12px;padding:3px 0"><span class="muted" style="width:150px">${k}</span><span>${v}</span></div>`).join("") +
+      (ready && u.notes ? `<div class="muted small" style="padding:6px 0">${esc(u.notes)}</div>` : "");
+  }
+  $("#applyAppUpdate").classList.toggle("hidden", !(ready && u.canApply));
+  const nav = $("#navSettings");
+  if (nav) nav.dataset.badge = ready ? "1" : "";
+}
+
 
 /* ---------- Routing ---------- */
 
@@ -689,6 +722,7 @@ function renderSettings() {
     $("#setThreads").value = s.settings.threads || 0;
     $("#setNightly").value = s.settings.nightlyUrl || "";
     $("#setLowPri").checked = !!s.settings.lowPriority;
+    $("#setAutoUpdate").checked = !s.settings.noAutoUpdate;
     $("#setThreads").dataset.loaded = "1";
   }
   if (s.installJob && !installTracking) trackInstall(s.installJob);
@@ -818,12 +852,26 @@ function wire() {
         threads: +$("#setThreads").value || 0,
         nightlyUrl: $("#setNightly").value.trim(),
         lowPriority: $("#setLowPri").checked,
+        noAutoUpdate: !$("#setAutoUpdate").checked,
       } });
       toast("Settings saved");
       await refreshStatus();
       loadSamples();
     } catch (e) { toast(e.message, true); }
   };
+  $("#checkAppUpdate").onclick = async () => {
+    $("#checkAppUpdate").disabled = true;
+    try { appUpdate = await api("/api/update/check", { method: "POST" }); renderAppUpdate(); } catch (e) { toast(e.message, true); }
+    $("#checkAppUpdate").disabled = false;
+  };
+  $("#applyAppUpdate").onclick = async () => {
+    if (!confirm("OfflineSim will close and reopen on the new version. Continue?")) return;
+    try {
+      await api("/api/update/apply", { method: "POST" });
+      document.body.innerHTML = `<div class="empty">Updating… OfflineSim will reopen in a moment.</div>`;
+    } catch (e) { toast(e.message, true); }
+  };
+  setInterval(refreshAppUpdate, 5 * 60 * 1000);
   $("#openData").onclick = () => api("/api/open", { body: { what: "data" } });
   $("#quitBtn").onclick = async () => {
     if (!confirm("Quit OfflineSim?")) return;

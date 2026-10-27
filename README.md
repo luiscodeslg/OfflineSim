@@ -31,6 +31,24 @@ Command line flags: `-browser` opens the UI in your default browser instead of a
 
 A custom APL's lines are appended after your character, and the first line of each action list is turned into an assignment (`actions.x=` instead of `actions.x+=`), so it replaces the default list rather than adding to it. Use **View simc input** on any sim page to see exactly what goes to simc.
 
+## Updates
+
+Installed copies update themselves. At launch and every two hours OfflineSim checks the latest [GitHub release](https://github.com/luiscodeslg/OfflineSim/releases/latest) for `manifest.json` + `manifest.sig`, downloads the new `OfflineSim.exe` if its build number is higher, and Settings shows **Restart and update**. Nothing is installed without your click, your data is never touched, and you can switch the checks off in Settings.
+
+Updates are signed with Ed25519, the same scheme as the AzIdler desktop client:
+
+- The public key (`update/public-key.pem`) is baked into the exe. Only the holder of the private key can publish an update.
+- The app installs an update only if the signature verifies, the build number is higher than the running one (no rollbacks), and the downloaded exe matches the signed size and SHA-256.
+- Downloads must be `https` and stay on GitHub hosts, including after redirects.
+
+### Publishing updates (one-time setup)
+
+1. Create a key pair on your PC: `go run ./tools/keygen offlinesim-signing-key.pem`. Keep the `.pem` somewhere safe and never commit it. This also rewrites `update/public-key.pem`; commit that file.
+2. Repo **Settings > Secrets and variables > Actions > New repository secret**: name `SIGNING_PRIVATE_KEY`, value = the full text of the `.pem` file. (Anyone who can edit workflows could use that secret, so turn on 2FA and protect `main`.)
+3. Push to `main`. The **Release** workflow tests, builds, signs and publishes `OfflineSim.exe`, `manifest.json` and `manifest.sig` as a release; the build number is the workflow run number.
+
+The very first copy has to be downloaded by hand from the Releases page. If the private key leaks, run keygen again; every installed copy must then be replaced by hand once, because the public key is baked in.
+
 ## Building from source
 
 Requires Go 1.25 or newer. Everything is pure Go (no cgo), so it cross-compiles from any OS.
@@ -42,7 +60,7 @@ Requires Go 1.25 or newer. Everything is pure Go (no cgo), so it cross-compiles 
 
 ```sh
 # On Linux/macOS
-./build.sh            # writes dist/OfflineSim.exe
+./build.sh            # writes dist/OfflineSim.exe (a dev build: it doesn't self-update)
 ```
 
 Run the tests with `go test ./...`. For UI work you can run the server on any OS with `go run . -headless -port 8765` and open http://127.0.0.1:8765/ in a browser; `testdata/fake_simc.py` is a stand-in engine (made-up numbers, for exercising the UI only) and `testdata/e2e.js` drives every page with Playwright.
@@ -58,6 +76,8 @@ Run the tests with `go test ./...`. For UI work you can run the server on any OS
 | `summary.go` | Reading simc's `json2` output into what the UI shows |
 | `apl.go` | Class/spec list, default APL generation, custom APL storage, sample profiles |
 | `profile.go` | Parsing the `/simc` addon string (character, equipped and bag items) |
+| `selfupdate.go`, `internal/update/` | Signed self-update (check, verify, stage, swap exe) |
+| `tools/keygen`, `tools/sign` | Make the signing key pair; sign a release manifest |
 | `server.go` | Local HTTP API (bound to 127.0.0.1 only) |
 | `web/` | The UI (plain HTML/CSS/JS, embedded in the exe) |
 

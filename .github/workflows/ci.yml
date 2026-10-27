@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # The runner image ships Go; go.mod's toolchain line pulls the exact version if it is newer.
+      - run: go vet ./...
+      - run: go test ./...
+      - name: Cross-compile for Windows
+        run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o /dev/null .
