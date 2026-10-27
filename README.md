@@ -43,9 +43,9 @@ Updates are signed with Ed25519, the same scheme as the AzIdler desktop client:
 
 ### Publishing updates (one-time setup)
 
-OfflineSim uses the same signing key as AzIdler, so there is no key to generate. `update/public-key.pem` is AzIdler's public key.
+OfflineSim has its own signing key pair; `update/public-key.pem` is the public half.
 
-1. In this repo go to **Settings > Secrets and variables > Actions > New repository secret**. Name it `SIGNING_PRIVATE_KEY` and paste the full text of your existing `azidler-signing-key.pem`. (Anyone who can edit workflows could use that secret, so keep 2FA on and protect `main`.)
+1. In this repo go to **Settings > Secrets and variables > Actions > New repository secret**. Name it `SIGNING_PRIVATE_KEY` and paste the full text of the private key file. (Anyone who can edit workflows could use that secret, so keep 2FA on and protect `main`.)
 2. Push to `main`. The **Release** workflow tests, builds, signs and publishes `OfflineSim.exe`, `manifest.json` and `manifest.sig` as a release; the build number is the workflow run number.
 
 The very first copy has to be downloaded by hand from the Releases page. If the key ever leaks, make a new one with `go run ./tools/keygen <file>` (it rewrites `update/public-key.pem`); every installed copy must then be replaced by hand once, because the public key is baked in.
