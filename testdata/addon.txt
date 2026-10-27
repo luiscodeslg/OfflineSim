@@ -1,0 +1,73 @@
+# Thrallmar - Frost - 2026-10-27 15:00 - US/Area 52
+# SimC Addon 12.0.5-01
+# WoW 12.0.5.99999, TOC 120005
+# Requires SimulationCraft 1205-01 or newer
+
+deathknight="Thrallmar"
+level=90
+race=orc
+region=us
+server=area52
+role=attack
+professions=mining=100/blacksmithing=100
+spec=frost
+
+talents=CsPAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+# Ancient Helm of Ruin (720)
+head=,id=212000,bonus_id=1/2/3
+# Chain of Echoes (715)
+neck=,id=212001,bonus_id=1
+# Pauldrons (720)
+shoulder=,id=212002
+# Cloak (710)
+back=,id=212003
+# Breastplate (720)
+chest=,id=212004
+# Bracers (710)
+wrist=,id=212005
+# Gauntlets (720)
+hands=,id=212006
+# Girdle (710)
+waist=,id=212007
+# Legplates (720)
+legs=,id=212008
+# Sabatons (710)
+feet=,id=212009
+# Band A (715)
+finger1=,id=212010
+# Band B (715)
+finger2=,id=212011
+# Idol of Fury (720)
+trinket1=,id=212012
+# Sigil of Rage (710)
+trinket2=,id=212013
+# Runeblade (723)
+main_hand=,id=212014,enchant_id=3368
+# Offblade (723)
+off_hand=,id=212015,enchant_id=3370
+
+### Gear from Bags
+#
+# Crown of Storms (730)
+# head=,id=220000,bonus_id=4
+#
+# Band C (726)
+# finger1=,id=220001
+#
+# Mark of Valor (726)
+# trinket1=,id=220002
+#
+# Sigil of Rage (730)
+# trinket1=,id=212013,bonus_id=9
+
+### Weekly Reward Choices
+#
+# Vault Ring (733)
+# finger1=,id=230001
+#
+
+### Additional Character Info
+#
+# upgrade_currencies=c:1:2
+# checksum=deadbeef

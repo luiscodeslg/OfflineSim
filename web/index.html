@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OfflineSim</title>
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><path d="M16 2 4 8v8c0 7 5 12 12 14 7-2 12-7 12-14V8z" fill="var(--accent)"/><path d="M10 17l4 4 8-9" stroke="#111" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <div><b>OfflineSim</b><small>local SimulationCraft</small></div>
+    </div>
+    <div class="nav-group">Simulate</div>
+    <a href="#quick" data-page="quick">Quick Sim</a>
+    <a href="#topgear" data-page="topgear">Top Gear</a>
+    <a href="#stats" data-page="stats">Stat Weights</a>
+    <a href="#apl" data-page="apl">APL Compare</a>
+    <a href="#advanced" data-page="advanced">Advanced</a>
+    <div class="nav-group">Library</div>
+    <a href="#library" data-page="library">APL Library</a>
+    <a href="#results" data-page="results">Results</a>
+    <a href="#settings" data-page="settings">Settings</a>
+    <div class="sidebar-foot" id="engineBadge">Checking engine…</div>
+  </nav>
+
+  <main id="main">
+    <div id="engineBanner" class="banner hidden"></div>
+
+    <!-- Sim pages share one form; the page decides which sections show. -->
+    <section id="page-sim" class="page hidden">
+      <header class="page-head">
+        <h1 id="simTitle">Quick Sim</h1>
+        <p id="simBlurb" class="muted"></p>
+      </header>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>Character</h2>
+          <div class="row gap">
+            <button class="btn ghost" id="pasteBtn" title="Paste from clipboard">Paste</button>
+            <select id="sampleSelect" class="select"><option value="">Load a sample character…</option></select>
+          </div>
+        </div>
+        <textarea id="profileInput" class="code" rows="8" spellcheck="false"
+          placeholder="Type /simc in game, copy the text from the SimulationCraft addon window and paste it here."></textarea>
+        <div id="charCard" class="char hidden"></div>
+      </div>
+
+      <div class="card" id="topGearCard">
+        <div class="card-head">
+          <h2>Gear to try</h2>
+          <div class="row gap">
+            <span id="comboCount" class="pill">0 combinations</span>
+            <button class="btn ghost" id="selectAllItems">Select all</button>
+            <button class="btn ghost" id="clearItems">Clear</button>
+          </div>
+        </div>
+        <p class="muted small">Equipped items are always included. Tick items from your bags or Great Vault and every combination is simmed. Rings and trinkets are tried in pairs. Unique-equipped and embellishment limits aren't checked.</p>
+        <div id="gearGrid" class="gear-grid"><p class="muted">Paste a /simc string with bag items to pick gear.</p></div>
+      </div>
+
+      <div class="card" id="aplCompareCard">
+        <div class="card-head"><h2>APLs to compare</h2><a href="#library" class="link">Open APL Library</a></div>
+        <p class="muted small">Your character is simmed once with the APL chosen under Options, then once more with each APL ticked here. Each copy is simulated on its own.</p>
+        <div id="compareList" class="check-list"></div>
+      </div>
+
+      <div class="card" id="advancedCard">
+        <p class="muted small">The text above is passed to simc as-is (OfflineSim only adds the report outputs and a thread count if you didn't set one). Use any simc option, profilesets, multiple actors, raid events and so on.</p>
+      </div>
+
+      <div class="card" id="optionsCard">
+        <div class="card-head"><h2>Options</h2></div>
+        <div class="grid">
+          <label>Fight style
+            <select id="fightStyle" class="select"></select>
+          </label>
+          <label>Fight length <span class="muted" id="maxTimeLabel">300s</span>
+            <input type="range" id="maxTime" min="30" max="600" step="15" value="300">
+          </label>
+          <label>Number of bosses
+            <input type="number" id="targets" min="1" max="20" value="1" class="input">
+          </label>
+          <label>Precision
+            <select id="precision" class="select">
+              <option value="te:0.5">Fast (0.5% error)</option>
+              <option value="te:0.2">Normal (0.2% error)</option>
+              <option value="te:0.1" selected>High (0.1% error)</option>
+              <option value="te:0.05">Very high (0.05% error)</option>
+              <option value="it:1000">1,000 iterations</option>
+              <option value="it:10000">10,000 iterations</option>
+              <option value="it:25000">25,000 iterations</option>
+            </select>
+          </label>
+          <label>APL
+            <select id="aplSelect" class="select"><option value="default">Default (SimulationCraft)</option></select>
+          </label>
+        </div>
+        <details class="expert">
+          <summary>Expert options</summary>
+          <p class="muted small">Extra simc lines added at the end of the input, for example <code>optimal_raid=0</code> or <code>override.bloodlust=0</code>.</p>
+          <textarea id="extraInput" class="code" rows="4" spellcheck="false"></textarea>
+        </details>
+      </div>
+
+      <div class="run-bar">
+        <button class="btn ghost" id="previewBtn">View simc input</button>
+        <button class="btn primary big" id="runBtn">Run Quick Sim</button>
+      </div>
+      <pre id="previewOut" class="code-block hidden"></pre>
+    </section>
+
+    <section id="page-running" class="page hidden">
+      <header class="page-head"><h1 id="runTitle">Simulating…</h1></header>
+      <div class="card">
+        <div class="progress"><div id="runBar"></div></div>
+        <div class="row between"><span id="runPhase" class="muted">Starting</span><span id="runElapsed" class="muted"></span></div>
+        <pre id="runLog" class="log"></pre>
+        <div class="row gap"><button class="btn danger" id="cancelBtn">Cancel</button></div>
+      </div>
+    </section>
+
+    <section id="page-result" class="page hidden"></section>
+
+    <section id="page-library" class="page hidden">
+      <header class="page-head">
+        <h1>APL Library</h1>
+        <p class="muted">Every class and spec's default action priority list, straight from your SimulationCraft build. Duplicate one to make your own version and use it in any sim.</p>
+      </header>
+      <div class="class-strip" id="classStrip"></div>
+      <div class="lib">
+        <aside class="card lib-side">
+          <div id="specTabs" class="spec-tabs"></div>
+          <h3>Default</h3>
+          <div id="libDefaultItem"></div>
+          <h3>My APLs</h3>
+          <div id="libCustomList" class="lib-list"></div>
+          <button class="btn ghost full" id="newAplBtn">New blank APL</button>
+          <h3>All my APLs</h3>
+          <div id="libAllCustom" class="lib-list small"></div>
+        </aside>
+        <div class="card lib-main">
+          <div class="card-head">
+            <input id="aplName" class="input title-input" placeholder="APL name">
+            <div class="row gap">
+              <div class="seg" id="aplView"><button data-v="read" class="on">Readable</button><button data-v="text">Text</button></div>
+              <button class="btn ghost" id="aplCopy">Copy</button>
+              <button class="btn ghost" id="aplRefresh" title="Regenerate from the engine">Refresh</button>
+              <button class="btn ghost" id="aplDup">Duplicate as mine</button>
+              <button class="btn danger ghost" id="aplDelete">Delete</button>
+              <button class="btn primary" id="aplSave">Save</button>
+            </div>
+          </div>
+          <div id="aplMsg" class="muted small"></div>
+          <div id="aplReadable" class="apl-read"></div>
+          <textarea id="aplText" class="code apl-text hidden" spellcheck="false"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <section id="page-results" class="page hidden">
+      <header class="page-head"><h1>Results</h1><p class="muted">Every sim you run is kept on this computer.</p></header>
+      <div class="card"><table class="table" id="historyTable"></table></div>
+    </section>
+
+    <section id="page-settings" class="page hidden">
+      <header class="page-head"><h1>Settings</h1></header>
+      <div class="card">
+        <div class="card-head"><h2>SimulationCraft engine</h2></div>
+        <div id="engineInfo" class="kv"></div>
+        <div class="row gap wrap">
+          <button class="btn primary" id="installBtn">Install / update latest nightly</button>
+          <label class="btn ghost file-btn">Install from a downloaded .7z or .zip<input type="file" id="installFile" accept=".7z,.zip"></label>
+        </div>
+        <p class="muted small">The nightly Windows build comes from downloads.simulationcraft.org. This is the only time OfflineSim goes online; after it's installed everything runs offline. No internet on this PC? Download a <code>simc-…-win64-….7z</code> elsewhere and use "Install from a downloaded file".</p>
+        <div id="installLog" class="hidden"><div class="progress"><div id="installBar"></div></div><pre class="log" id="installLogText"></pre></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Preferences</h2></div>
+        <div class="grid">
+          <label>Use my own simc.exe (optional)
+            <input id="setSimcPath" class="input" placeholder="C:\simc\simc.exe">
+          </label>
+          <label>CPU threads (0 = all cores)
+            <input id="setThreads" type="number" min="0" max="256" class="input">
+          </label>
+          <label>Nightly listing URL
+            <input id="setNightly" class="input">
+          </label>
+          <label class="check"><input type="checkbox" id="setLowPri"> Run sims at low CPU priority so the PC stays responsive</label>
+        </div>
+        <div class="row gap"><button class="btn primary" id="saveSettings">Save</button><button class="btn ghost" id="openData">Open data folder</button><button class="btn ghost" id="quitBtn">Quit OfflineSim</button></div>
+      </div>
+    </section>
+  </main>
+</div>
+<div id="toast" class="toast hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>
